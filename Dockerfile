@@ -18,6 +18,7 @@ RUN npm install
 COPY . .
 
 # Build the Next.js application
+ENV MONGODB_URI="mongodb://0.0.0.0/build_placeholder"
 RUN npm run build
 # Or if using pnpm:
 # RUN pnpm run build
