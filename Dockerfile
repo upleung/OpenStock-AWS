@@ -18,7 +18,14 @@ RUN npm install
 COPY . .
 
 # Build the Next.js application
-ENV MONGODB_URI="mongodb://0.0.0.0/build_placeholder"
+# --- 删除之前的 ENV 行，替换为下面这两行 ---
+# 接收构建参数
+ARG MONGODB_URI 
+# 将参数设置为环境变量，供 build 过程使用
+ENV MONGODB_URI=$MONGODB_URI
+
+# 为了防止 NextAuth 报错，我们再加个假的 Secret（这个可以是假的）
+ENV NEXTAUTH_SECRET="build_secret_placeholder"
 RUN npm run build
 # Or if using pnpm:
 # RUN pnpm run build
