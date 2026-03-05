@@ -16,7 +16,7 @@ COPY . .
 # Build the Next.js application
 ARG MONGODB_URI 
 ENV MONGODB_URI=$MONGODB_URI
-# 注入假的 Secret 防止构建失败
+# 注入假的 Secret 防止不能构建
 ENV NEXTAUTH_SECRET="build_secret_placeholder"
 ENV BETTER_AUTH_SECRET="build_secret_placeholder"
 
