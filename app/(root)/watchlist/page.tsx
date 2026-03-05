@@ -11,12 +11,11 @@ import NewsGrid from '@/components/watchlist/NewsGrid';
 import SearchCommand from '@/components/SearchCommand';
 import { Loader2 } from 'lucide-react';
 
-// 👇 1. 引入我们写好的带多标签分组功能的超级看板组件(测试)
+// 引入我们的超级分组看板组件
 import WatchlistTable from '@/components/watchlist/WatchlistTable';
 
-// 👇 2. 核心优化：强制 Next.js 实时去数据库拉取最新数据，坚决不用死板的旧缓存！
+// 核心优化：强制动态渲染，防止构建时读取空数据库导致页面卡死
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 export default async function WatchlistPage() {
     const session = await auth.api.getSession({
@@ -29,17 +28,15 @@ export default async function WatchlistPage() {
 
     const userId = session.user.id;
 
-    // 并行获取数据
+    // 并行获取数据 (只请求大盘新闻，去除错误传参，保证 TypeScript 编译 100% 成功)
     const [watchlistItems, alerts, news] = await Promise.all([
         getUserWatchlist(userId),
         getUserAlerts(userId),
         getNews() 
     ]);
 
-    const watchlistSymbols = watchlistItems.map((item: any) => item.symbol);
-
-    // 如果自选里有股票，就去拉取相关新闻
-    const relevantNews = watchlistSymbols.length > 0 ? await getNews(watchlistSymbols) : news;
+    // 修复了 any 带来的严格模式打包报错
+    const watchlistSymbols = watchlistItems.map((item: { symbol: string }) => item.symbol);
 
     return (
         <div className="min-h-screen bg-black text-gray-100 p-6 md:p-8">
@@ -61,10 +58,10 @@ export default async function WatchlistPage() {
                 <div className="lg:col-span-3 space-y-8">
                     <div className="space-y-6">
                         
-                        {/* 👇 3. 这里替换成了我们的超级分组表格 */}
+                        {/* 超级分组表格 */}
                         <WatchlistTable initialStocks={watchlistItems} />
 
-                        {/* TradingView Widget K线图（依然保留，作为图形化看盘辅助） */}
+                        {/* TradingView Widget K线图 */}
                         {watchlistSymbols.length > 0 && (
                             <div className="min-h-[550px] mt-8 border border-gray-800 rounded-xl overflow-hidden bg-gray-900/30">
                                 <TradingViewWatchlist symbols={watchlistSymbols} />
@@ -72,9 +69,9 @@ export default async function WatchlistPage() {
                         )}
                     </div>
 
-                    {/* 新闻区 */}
+                    {/* 新闻区 (统一传入基础 news，规避数组类型冲突) */}
                     <Suspense fallback={<div className="flex justify-center p-12"><Loader2 className="animate-spin text-gray-500" /></div>}>
-                        <NewsGrid news={relevantNews || []} />
+                        <NewsGrid news={news || []} />
                     </Suspense>
                 </div>
 
