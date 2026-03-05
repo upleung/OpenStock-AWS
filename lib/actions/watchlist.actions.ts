@@ -4,6 +4,36 @@ import { connectToDatabase } from '@/database/mongoose';
 import { Watchlist } from '@/database/models/watchlist.model';
 import { revalidatePath } from 'next/cache';
 
+
+// --- 找到类似这段定义的地方，增加 category 参数，默认值为 '默认列表' ---
+export async function addStockToWatchlist(symbol: string, path: string, category: string = "默认列表") {
+  try {
+    await connectToDatabase();
+    const session = await auth(); // 或者获取 user 的逻辑
+    if (!session) throw new Error("Unauthorized");
+
+    // 检查是否已经存在
+    const existing = await Watchlist.findOne({ userId: session.user.id, symbol });
+    if (existing) {
+      return { success: false, message: "Stock already in watchlist" };
+    }
+
+    // 👇 --- 在创建时存入 category --- 👇
+    await Watchlist.create({
+      userId: session.user.id,
+      symbol: symbol.toUpperCase(),
+      category: category, // 保存分组
+      order: Date.now(), // 用时间戳做初始排序权重
+    });
+
+    revalidatePath(path);
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false, message: "Failed to add stock" };
+  }
+}
+
 // -- CRUD Operations --
 
 export async function addToWatchlist(userId: string, symbol: string, company: string) {
@@ -90,4 +120,24 @@ export async function getWatchlistSymbolsByEmail(email: string): Promise<string[
         console.error('getWatchlistSymbolsByEmail error:', err);
         return [];
     }
+}
+
+// 👇 --- 复制粘贴这个全新的函数到文件最下面 --- 👇
+export async function updateStockCategory(symbol: string, newCategory: string, path: string) {
+  try {
+    await connectToDatabase();
+    const session = await auth();
+    if (!session) return { success: false };
+
+    await Watchlist.findOneAndUpdate(
+      { userId: session.user.id, symbol: symbol },
+      { category: newCategory }
+    );
+
+    revalidatePath(path);
+    return { success: true };
+  } catch (error) {
+    console.error(error);
+    return { success: false };
+  }
 }
