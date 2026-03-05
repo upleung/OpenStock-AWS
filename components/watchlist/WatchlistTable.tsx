@@ -9,17 +9,29 @@ import { removeStock, updateStockCategory } from "@/lib/actions/watchlist.action
 import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
+// 修复点3：定义严格的 TypeScript 接口，干掉 any[]
+interface StockItem {
+  _id?: string;
+  symbol: string;
+  value?: number;
+  change?: number;
+  changePercent?: number;
+  category?: string;
+}
+
 interface WatchlistTableProps {
-  initialStocks: any[];
+  initialStocks: StockItem[];
 }
 
 export default function WatchlistTable({ initialStocks }: WatchlistTableProps) {
-  const [stocks, setStocks] = useState(initialStocks);
+  const [stocks, setStocks] = useState<StockItem[]>(initialStocks);
   const [activeTab, setActiveTab] = useState("默认列表");
-  const [sortConfig, setSortConfig] = useState<{key: string | null, direction: "asc" | "desc"}>({ key: null, direction: "asc" });
+  
+  // 严格绑定排序键值的类型
+  const [sortConfig, setSortConfig] = useState<{key: keyof StockItem | null, direction: "asc" | "desc"}>({ key: null, direction: "asc" });
 
   const groups = useMemo(() => {
-    const list = new Set(["默认列表"]);
+    const list = new Set<string>(["默认列表"]);
     stocks.forEach((s) => {
       if (s.category) list.add(s.category);
     });
@@ -31,18 +43,23 @@ export default function WatchlistTable({ initialStocks }: WatchlistTableProps) {
 
     if (sortConfig.key) {
       filtered.sort((a, b) => {
-        const aVal = a[sortConfig.key] || 0;
-        const bVal = b[sortConfig.key] || 0;
-        if (typeof aVal === "string") {
+        const key = sortConfig.key as keyof StockItem;
+        const aVal = a[key] ?? 0;
+        const bVal = b[key] ?? 0;
+        
+        if (typeof aVal === "string" && typeof bVal === "string") {
           return sortConfig.direction === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
         }
-        return sortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
+        
+        const numA = Number(aVal);
+        const numB = Number(bVal);
+        return sortConfig.direction === "asc" ? numA - numB : numB - numA;
       });
     }
     return filtered;
   }, [stocks, activeTab, sortConfig]);
 
-  const handleSort = (key: string) => {
+  const handleSort = (key: keyof StockItem) => {
     setSortConfig(curr => ({ key, direction: curr.key === key && curr.direction === "asc" ? "desc" : "asc" }));
   };
 
@@ -65,7 +82,7 @@ export default function WatchlistTable({ initialStocks }: WatchlistTableProps) {
   };
 
   const handleCreateNewGroup = () => {
-    const newGroupName = prompt("请输入新的分组名称：");
+    const newGroupName = window.prompt("请输入新的分组名称：");
     if (newGroupName && newGroupName.trim() !== "") {
         setActiveTab(newGroupName.trim());
         toast.info("现在你可以将股票移动到这个新分组了");
@@ -117,8 +134,8 @@ export default function WatchlistTable({ initialStocks }: WatchlistTableProps) {
                 <TableRow key={stock._id || stock.symbol}>
                   <TableCell className="font-medium"><WatchlistStockChip symbol={stock.symbol} /></TableCell>
                   <TableCell className="text-right font-mono">${stock.value?.toFixed(2) || "0.00"}</TableCell>
-                  <TableCell className={`text-right font-mono font-bold ${stock.changePercent > 0 ? "text-green-500" : stock.changePercent < 0 ? "text-red-500" : ""}`}>
-                    {stock.changePercent > 0 ? "+" : ""}{stock.changePercent?.toFixed(2) || "0.00"}%
+                  <TableCell className={`text-right font-mono font-bold ${Number(stock.changePercent) > 0 ? "text-green-500" : Number(stock.changePercent) < 0 ? "text-red-500" : ""}`}>
+                    {Number(stock.changePercent) > 0 ? "+" : ""}{stock.changePercent?.toFixed(2) || "0.00"}%
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
