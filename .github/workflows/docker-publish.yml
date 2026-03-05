@@ -2,7 +2,7 @@ name: Build and Publish Docker Image
 
 on:
   push:
-    branches: [ "main" ] # 监听 main 分支的改动
+    branches: [ "main" ] # 监听 main 分支改动
   workflow_dispatch: # 允许手动点按钮触发
 
 env:
