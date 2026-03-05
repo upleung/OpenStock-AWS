@@ -11,7 +11,7 @@ import NewsGrid from '@/components/watchlist/NewsGrid';
 import SearchCommand from '@/components/SearchCommand';
 import { Loader2 } from 'lucide-react';
 
-// 👇 1. 引入我们写好的带多标签分组功能的超级看板组件
+// 👇 1. 引入我们写好的带多标签分组功能的超级看板组件(测试)
 import WatchlistTable from '@/components/watchlist/WatchlistTable';
 
 // 👇 2. 核心优化：强制 Next.js 实时去数据库拉取最新数据，坚决不用死板的旧缓存！
