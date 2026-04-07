@@ -1,19 +1,24 @@
-import { Schema, model, models } from "mongoose";
+import { Schema, model, models, type Document, type Model } from 'mongoose';
 
-const WatchlistSchema = new Schema({
-  userId: { type: String, required: true },
-  symbol: { type: String, required: true },
-  category: { 
-    type: String, 
-    default: "默认列表" 
-  },
-  order: { 
-    type: Number, 
-    default: 0 
-  },
-  addedAt: { type: Date, default: Date.now },
-});
+export interface WatchlistItem extends Document {
+    userId: string;
+    symbol: string;
+    company: string;
+    addedAt: Date;
+}
 
-const Watchlist = models.Watchlist || model("Watchlist", WatchlistSchema);
+const WatchlistSchema = new Schema<WatchlistItem>(
+    {
+        userId: { type: String, required: true, index: true },
+        symbol: { type: String, required: true, uppercase: true, trim: true },
+        company: { type: String, required: true, trim: true },
+        addedAt: { type: Date, default: Date.now },
+    },
+    { timestamps: false }
+);
 
-export default Watchlist;
+// Prevent duplicate symbols per user
+WatchlistSchema.index({ userId: 1, symbol: 1 }, { unique: true });
+
+export const Watchlist: Model<WatchlistItem> =
+    (models?.Watchlist as Model<WatchlistItem>) || model<WatchlistItem>('Watchlist', WatchlistSchema);

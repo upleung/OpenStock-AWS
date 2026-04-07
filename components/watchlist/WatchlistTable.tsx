@@ -1,170 +1,168 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Trash2, Plus, FolderOpen, ArrowUp, ArrowDown, MoveRight } from "lucide-react";
-import WatchlistStockChip from "./WatchlistStockChip";
-import { removeStock, updateStockCategory } from "@/lib/actions/watchlist.actions";
-import { toast } from "sonner";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-
-// 修复点3：定义严格的 TypeScript 接口，干掉 any[]
-interface StockItem {
-  _id?: string;
-  symbol: string;
-  value?: number;
-  change?: number;
-  changePercent?: number;
-  category?: string;
-}
+import React, { useEffect, useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { ArrowUp, ArrowDown, Bell } from "lucide-react";
+import CreateAlertModal from "./CreateAlertModal";
+import WatchlistButton from "@/components/WatchlistButton";
+import { formatCurrency, formatNumber } from "@/lib/utils";
+import { removeFromWatchlist } from "@/lib/actions/watchlist.actions";
 
 interface WatchlistTableProps {
-  initialStocks: StockItem[];
+    data: any[];
+    userId: string;
+    onRefresh?: () => void;
 }
 
-export default function WatchlistTable({ initialStocks }: WatchlistTableProps) {
-  const [stocks, setStocks] = useState<StockItem[]>(initialStocks);
-  const [activeTab, setActiveTab] = useState("默认列表");
-  
-  // 严格绑定排序键值的类型
-  const [sortConfig, setSortConfig] = useState<{key: keyof StockItem | null, direction: "asc" | "desc"}>({ key: null, direction: "asc" });
+export default function WatchlistTable({ data, userId, onRefresh }: WatchlistTableProps) {
+    const [stocks, setStocks] = useState(data);
 
-  const groups = useMemo(() => {
-    const list = new Set<string>(["默认列表"]);
-    stocks.forEach((s) => {
-      if (s.category) list.add(s.category);
-    });
-    return Array.from(list);
-  }, [stocks]);
+    useEffect(() => {
+        // Initial set if prop changes
+        setStocks(data);
+    }, [data]);
 
-  const visibleStocks = useMemo(() => {
-    let filtered = stocks.filter(s => (s.category || "默认列表") === activeTab);
+    useEffect(() => {
+        if (!stocks || stocks.length === 0) return;
 
-    if (sortConfig.key) {
-      filtered.sort((a, b) => {
-        const key = sortConfig.key as keyof StockItem;
-        const aVal = a[key] ?? 0;
-        const bVal = b[key] ?? 0;
-        
-        if (typeof aVal === "string" && typeof bVal === "string") {
-          return sortConfig.direction === "asc" ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
-        }
-        
-        const numA = Number(aVal);
-        const numB = Number(bVal);
-        return sortConfig.direction === "asc" ? numA - numB : numB - numA;
-      });
+        // Poll for price updates every 15 seconds
+        const interval = setInterval(async () => {
+            try {
+                const symbols = stocks.map(s => s.symbol);
+                if (symbols.length === 0) return;
+
+                // Dynamic import to avoid server-action issues if directly imported in client component sometimes
+                const { getWatchlistData } = await import('@/lib/actions/finnhub.actions');
+                const updatedData = await getWatchlistData(symbols);
+
+                if (updatedData && updatedData.length > 0) {
+                    setStocks(current => {
+                        const map = new Map(updatedData.map(item => [item.symbol, item]));
+                        return current.map(existing => {
+                            const fresh = map.get(existing.symbol);
+                            if (fresh) {
+                                return {
+                                    ...existing,
+                                    price: fresh.price,
+                                    change: fresh.change,
+                                    changePercent: fresh.changePercent,
+                                };
+                            }
+                            return existing;
+                        });
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to poll watchlist prices", err);
+            }
+        }, 5000);
+
+        return () => clearInterval(interval);
+    }, [stocks]); // Re-create interval if list size changes
+
+    if (!stocks || stocks.length === 0) {
+        return (
+            <div className="text-center py-12 bg-gray-900/50 rounded-lg border border-gray-800">
+                <h3 className="text-xl font-medium text-gray-300 mb-2">Your watchlist is empty</h3>
+                <p className="text-gray-500 mb-6">Add stocks to track their performance and set alerts.</p>
+            </div>
+        );
     }
-    return filtered;
-  }, [stocks, activeTab, sortConfig]);
 
-  const handleSort = (key: keyof StockItem) => {
-    setSortConfig(curr => ({ key, direction: curr.key === key && curr.direction === "asc" ? "desc" : "asc" }));
-  };
+    return (
+        <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40 backdrop-blur-md shadow-xl">
+            <table className="w-full text-left text-sm border-collapse">
+                <thead className="bg-white/5 text-gray-400 font-medium border-b border-white/10">
+                    <tr>
+                        <th className="px-6 py-4 font-semibold tracking-wide">Company</th>
+                        <th className="px-6 py-4 font-semibold tracking-wide">Symbol</th>
+                        <th className="px-6 py-4 font-semibold tracking-wide">Price</th>
+                        <th className="px-6 py-4 font-semibold tracking-wide">Change</th>
+                        <th className="px-6 py-4 font-semibold tracking-wide">Market Cap</th>
+                        <th className="px-6 py-4 text-right font-semibold tracking-wide">Actions</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-white/10">
+                    {stocks.map((stock: any) => {
+                        const isPositive = stock.change >= 0;
+                        return (
+                            <tr key={stock.symbol} className="hover:bg-white/5 transition-colors group">
+                                <td className="px-6 py-4">
+                                    <div className="flex items-center space-x-4">
+                                        {stock.logo ? (
+                                            <div className="w-10 h-10 relative rounded-full overflow-hidden bg-white/10 shadow-sm border border-white/5">
+                                                <Image
+                                                    src={stock.logo}
+                                                    alt={stock.symbol}
+                                                    fill
+                                                    className="object-contain p-1.5"
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-gray-700 to-gray-800 flex items-center justify-center text-xs font-bold text-white shadow-sm border border-white/5">
+                                                {stock.symbol[0]}
+                                            </div>
+                                        )}
+                                        <div className="flex flex-col">
+                                            <span className="font-semibold text-white text-base">{stock.name}</span>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 font-medium text-gray-300">
+                                    <span className="bg-white/5 px-2.5 py-1 rounded-md text-xs font-mono border border-white/10">
+                                        {stock.symbol}
+                                    </span>
+                                </td>
+                                <td className="px-6 py-4 text-white font-medium text-base tracking-tight">
+                                    {formatCurrency(stock.price)}
+                                </td>
+                                <td className={`px-6 py-4 font-medium`}>
+                                    <div className={`flex items-center w-fit px-2 py-1 rounded-md ${isPositive ? "bg-green-500/10 text-green-400" : "bg-red-500/10 text-red-400"}`}>
+                                        {isPositive ? <ArrowUp className="w-3.5 h-3.5 mr-1.5" /> : <ArrowDown className="w-3.5 h-3.5 mr-1.5" />}
+                                        {Math.abs(stock.changePercent).toFixed(2)}%
+                                    </div>
+                                </td>
+                                <td className="px-6 py-4 text-gray-400 font-medium">
+                                    {formatNumber(stock.marketCap)}
+                                </td>
+                                <td className="px-6 py-4 text-right">
+                                    <div className="flex items-center justify-end space-x-3 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <CreateAlertModal
+                                            userId={userId}
+                                            symbol={stock.symbol}
+                                            currentPrice={stock.price}
+                                            onAlertCreated={onRefresh}
+                                        >
+                                            <button className="p-2.5 rounded-full text-gray-400 hover:text-white hover:bg-white/10 transition-all border border-transparent hover:border-white/10" title="Add Alert">
+                                                <Bell className="w-4.5 h-4.5" />
+                                            </button>
+                                        </CreateAlertModal>
 
-  const handleDelete = async (symbol: string) => {
-    const res = await removeStock(symbol, "/watchlist");
-    if (res.success) {
-      toast.success("已移除");
-      setStocks(prev => prev.filter(s => s.symbol !== symbol));
-    } else {
-      toast.error("移除失败");
-    }
-  };
-
-  const handleMoveCategory = async (symbol: string, newCategory: string) => {
-    setStocks(prev => prev.map(s => s.symbol === symbol ? { ...s, category: newCategory } : s));
-    toast.success(`已移动至 ${newCategory}`);
-    
-    const res = await updateStockCategory(symbol, newCategory, "/watchlist");
-    if (!res.success) toast.error("状态保存失败");
-  };
-
-  const handleCreateNewGroup = () => {
-    const newGroupName = window.prompt("请输入新的分组名称：");
-    if (newGroupName && newGroupName.trim() !== "") {
-        setActiveTab(newGroupName.trim());
-        toast.info("现在你可以将股票移动到这个新分组了");
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Tabs */}
-      <div className="flex items-center space-x-2 overflow-x-auto pb-2 border-b border-border/40">
-        {groups.map((group) => (
-          <button
-            key={group}
-            onClick={() => setActiveTab(group)}
-            className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all flex items-center gap-2 ${
-              activeTab === group ? "bg-primary text-primary-foreground shadow-md" : "bg-muted/50 text-muted-foreground hover:bg-muted"
-            }`}
-          >
-            <FolderOpen className="w-4 h-4" /> {group}
-          </button>
-        ))}
-        <Button onClick={handleCreateNewGroup} variant="ghost" size="sm" className="rounded-full gap-1">
-            <Plus className="w-4 h-4" /> 新建分组
-        </Button>
-      </div>
-
-      {/* Table */}
-      <div className="rounded-xl border bg-card text-card-foreground shadow-sm overflow-hidden">
-        <Table>
-          <TableHeader className="bg-muted/50">
-            <TableRow>
-              <TableHead onClick={() => handleSort("symbol")} className="cursor-pointer">
-                代码/名称 {sortConfig.key === "symbol" && (sortConfig.direction === "asc" ? <ArrowUp className="inline w-3 h-3"/> : <ArrowDown className="inline w-3 h-3"/>)}
-              </TableHead>
-              <TableHead onClick={() => handleSort("value")} className="text-right cursor-pointer">
-                现价 {sortConfig.key === "value" && (sortConfig.direction === "asc" ? <ArrowUp className="inline w-3 h-3"/> : <ArrowDown className="inline w-3 h-3"/>)}
-              </TableHead>
-              <TableHead onClick={() => handleSort("changePercent")} className="text-right cursor-pointer">
-                涨跌幅 {sortConfig.key === "changePercent" && (sortConfig.direction === "asc" ? <ArrowUp className="inline w-3 h-3"/> : <ArrowDown className="inline w-3 h-3"/>)}
-              </TableHead>
-              <TableHead className="text-center w-[120px]">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {visibleStocks.length === 0 ? (
-              <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">该分组下暂无自选股</TableCell></TableRow>
-            ) : (
-              visibleStocks.map((stock) => (
-                <TableRow key={stock._id || stock.symbol}>
-                  <TableCell className="font-medium"><WatchlistStockChip symbol={stock.symbol} /></TableCell>
-                  <TableCell className="text-right font-mono">${stock.value?.toFixed(2) || "0.00"}</TableCell>
-                  <TableCell className={`text-right font-mono font-bold ${Number(stock.changePercent) > 0 ? "text-green-500" : Number(stock.changePercent) < 0 ? "text-red-500" : ""}`}>
-                    {Number(stock.changePercent) > 0 ? "+" : ""}{stock.changePercent?.toFixed(2) || "0.00"}%
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-1">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon" title="移动到其他分组"><MoveRight className="w-4 h-4" /></Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                           {groups.map(g => (
-                              g !== activeTab && (
-                                <DropdownMenuItem key={g} onClick={() => handleMoveCategory(stock.symbol, g)}>
-                                    移动至: {g}
-                                </DropdownMenuItem>
-                              )
-                           ))}
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-
-                      <Button variant="ghost" size="icon" className="text-red-500" onClick={() => handleDelete(stock.symbol)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </div>
-    </div>
-  );
+                                        <div className="transform scale-95 hover:scale-100 transition-transform">
+                                            <WatchlistButton
+                                                symbol={stock.symbol}
+                                                company={stock.name}
+                                                isInWatchlist={true}
+                                                type="icon"
+                                                showTrashIcon={false}
+                                                onWatchlistChange={async (sym, added) => {
+                                                    if (!added) {
+                                                        await removeFromWatchlist(userId, sym);
+                                                        // Update local list faster than full page refresh if you want
+                                                        setStocks((curr: any[]) => curr.filter((s: any) => s.symbol !== sym));
+                                                        if (onRefresh) onRefresh();
+                                                    }
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        );
+                    })}
+                </tbody>
+            </table>
+        </div>
+    );
 }
